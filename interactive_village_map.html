@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Village Map & Supply Chain Analytics</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- SheetJS for Dynamic Excel Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- Font Awesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --border-color: #334155;
+            --primary: #38bdf8;
+            --primary-hover: #0284c7;
+            --accent: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #38bdf8, #0284c7);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
+
+        .brand-title h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-title p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Stats Bar */
+        .kpi-container {
+            display: flex;
+            gap: 14px;
+        }
+
+        .kpi-card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 105px;
+        }
+
+        .kpi-val {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .kpi-lbl {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.82rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.5);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            box-shadow: none;
+        }
+
+        .btn-outline:hover {
+            background: #0f172a;
+            border-color: var(--primary);
+        }
+
+        /* Main Container */
+        .main-container {
+            display: flex;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Sidebar Controls */
+        sidebar {
+            width: 320px;
+            background-color: var(--bg-card);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            z-index: 999;
+        }
+
+        .sidebar-content {
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-control {
+            background-color: #0f172a;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .toggle-switch span {
+            font-size: 0.82rem;
+            font-weight: 500;
+        }
+
+        /* Map Container */
+        #map {
+            flex: 1;
+            height: 100%;
+            width: 100%;
+            background: #090d16;
+            z-index: 1;
+        }
+
+        /* Table Drawer */
+        .table-modal {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 380px;
+            background: var(--bg-card);
+            border-top: 2px solid var(--primary);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+        }
+
+        .table-modal.open {
+            transform: translateY(0);
+        }
+
+        .table-header {
+            padding: 10px 20px;
+            background: #0f172a;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-body {
+            flex: 1;
+            overflow: auto;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: #1e293b;
+            color: var(--primary);
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        th:hover {
+            color: #ffffff;
+        }
+
+        td {
+            padding: 8px 14px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+            white-space: nowrap;
+        }
+
+        tr:hover {
+            background-color: rgba(56, 189, 248, 0.05);
+        }
+
+        /* Custom Map Popup Styling */
+        .leaflet-popup-content-wrapper {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            padding: 0;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        }
+        .leaflet-popup-tip {
+            background: #1e293b;
+        }
+        .custom-popup {
+            padding: 14px 16px;
+            font-family: 'Inter', sans-serif;
+            min-width: 220px;
+        }
+        .popup-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+        }
+        .popup-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.78rem;
+            margin-bottom: 4px;
+        }
+        .popup-label {
+            color: var(--text-muted);
+        }
+        .popup-value {
+            font-weight: 600;
+            color: #ffffff;
+        }
+        .badge {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        .ring-tooltip {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+            font-weight: 600;
+            font-size: 0.72rem;
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+            <div class="brand-title">
+                <h1>Distance wise Village Locations on Google Map</h1>
+                <p>Dynamic Geographic Analytics</p>
+            </div>
+        </div>
+
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <div class="kpi-val" id="kpi-villages">0</div>
+                <div class="kpi-lbl">Villages</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-val" id="kpi-area">0.000</div>
+                <div class="kpi-lbl">Cane Area (Ha)</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-val" id="kpi-cla">0.000</div>
+                <div class="kpi-lbl">Total CLA</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-val" id="kpi-avg-dist">0.0 km</div>
+                <div class="kpi-lbl">Avg Distance</div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline" id="toggle-table-btn"><i class="fa-solid fa-table"></i> Data Table</button>
+            <button class="btn" id="export-csv-btn"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <sidebar>
+            <div class="sidebar-content">
+                <!-- Excel Dynamic Loader & Uploader -->
+                <div class="filter-group" style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px dashed var(--primary);">
+                    <label><i class="fa-solid fa-file-excel" style="color: var(--success);"></i> Spreadsheet Data Source</label>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display: none;" />
+                    <button class="btn btn-outline" id="upload-excel-btn" style="width: 100%; border-color: var(--primary); color: var(--primary); font-weight: 600; background: rgba(56, 189, 248, 0.1); justify-content: center; margin-top: 4px;">
+                        <i class="fa-solid fa-upload"></i> Load / Change Excel File
+                    </button>
+                    <div id="data-source-status" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-database" style="color: var(--success);"></i>
+                        <span id="data-source-text">Loading Village_list_for_map.xlsx...</span>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label for="search-input"><i class="fa-solid fa-magnifying-glass"></i> Search Village / Code</label>
+                    <input type="text" id="search-input" class="form-control" placeholder="e.g. Pandeypur or 1101..." />
+                </div>
+
+                <div class="filter-group">
+                    <label for="region-filter">Region</label>
+                    <select id="region-filter" class="form-control">
+                        <option value="">All Regions</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="zone-filter">Zone</label>
+                    <select id="zone-filter" class="form-control">
+                        <option value="">All Zones</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="circle-filter">Circle</label>
+                    <select id="circle-filter" class="form-control">
+                        <option value="">All Circles</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="distance-filter">Distance Radius</label>
+                    <select id="distance-filter" class="form-control">
+                        <option value="">All Distances</option>
+                        <option value="0-5">0 - 5 km (Gate / Inner)</option>
+                        <option value="5-10">5 - 10 km</option>
+                        <option value="10-15">10 - 15 km</option>
+                        <option value="15-20">15 - 20 km</option>
+                        <option value="20-25">20 - 25 km</option>
+                        <option value="25-35">25 - 35 km</option>
+                        <option value="35-45">35 - 45 km</option>
+                        <option value="45-55">45 - 55 km</option>
+                        <option value="55-65">55 - 65 km</option>
+                        <option value="65-75">65 - 75 km</option>
+                        <option value="75-85">75 - 85 km</option>
+                        <option value="85-95">85 - 95 km</option>
+                        <option value="95-105">95 - 105 km</option>
+                        <option value="105-115">105 - 115 km</option>
+                        <option value="115+">115+ km (Outstation)</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="tile-filter">Map Tile Style</label>
+                    <select id="tile-filter" class="form-control">
+                        <option value="osm">OpenStreetMap Standard</option>
+                        <option value="dark">CartoDB Dark (High Tech)</option>
+                        <option value="light">CartoDB Positron (Light)</option>
+                        <option value="satellite">Esri World Satellite</option>
+                    </select>
+                </div>
+
+                <hr style="border-color: var(--border-color);" />
+
+                <div class="toggle-switch" id="toggle-rings-box">
+                    <span><i class="fa-solid fa-circle-notch"></i> Distance Radial Rings</span>
+                    <input type="checkbox" id="toggle-rings" checked />
+                </div>
+
+                <div class="toggle-switch" id="toggle-lines-box">
+                    <span><i class="fa-solid fa-route"></i> Distance Lines to Factory</span>
+                    <input type="checkbox" id="toggle-lines" />
+                </div>
+
+                <button class="btn btn-outline" id="reset-filters-btn" style="margin-top: 10px;"><i class="fa-solid fa-rotate-left"></i> Reset Filters</button>
+            </div>
+        </sidebar>
+
+        <div id="map"></div>
+
+        <!-- Data Table Drawer -->
+        <div class="table-modal" id="table-drawer">
+            <div class="table-header">
+                <h3 style="font-size: 0.95rem; font-weight: 600;"><i class="fa-solid fa-database"></i> Village Master Data (<span id="table-count">0</span> records)</h3>
+                <button class="btn btn-outline" id="close-table-btn" style="padding: 4px 10px; font-size: 0.75rem;"><i class="fa-solid fa-xmark"></i> Close Table</button>
+            </div>
+            <div class="table-body">
+                <table id="village-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('VillageCode')">Code <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('VillageName')">Village Name <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('RegionName')">Region <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('ZoneName')">Zone <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('CircleName')">Circle <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('Distance')">Distance (km) <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('CLA')">CLA <i class="fa-solid fa-sort"></i></th>
+                            <th onclick="sortTable('Area')">Cane Area <i class="fa-solid fa-sort"></i></th>
+                            <th>Village Lat</th>
+                            <th>Village Long</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fallback pre-parsed JS dataset -->
+    <script src="village_data.js"></script>
+
+    <script>
+        // Central Factory / Mill Coordinates
+        const FACTORY_LAT = 27.501776;
+        const FACTORY_LONG = 79.789931;
+
+        // Application State
+        let rawVillagesData = [];
+        let filteredData = [];
+        let currentSortCol = 'Distance';
+        let currentSortAsc = true;
+
+        // Initialize Leaflet Map
+        const map = L.map('map', {
+            center: [FACTORY_LAT, FACTORY_LONG],
+            zoom: 11,
+            zoomControl: false
+        });
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Tile Layers
+        const tileLayers = {
+            osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }),
+	    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' }),
+            light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' }),
+            satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Esri Satellite' })
+        };
+        let currentTile = tileLayers.osm;
+        currentTile.addTo(map);
+
+        // Marker Groups
+        const markersGroup = L.markerClusterGroup({
+            maxClusterRadius: 40,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true
+        });
+        map.addLayer(markersGroup);
+
+        const ringsGroup = L.layerGroup().addTo(map);
+        const linesGroup = L.layerGroup().addTo(map);
+
+        // Draw Factory Marker
+        const factoryIcon = L.divIcon({
+            className: 'factory-marker',
+            html: '<div style="background: #ef4444; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px #ef4444; display:flex; align-items:center; justify-content:center; color:white; font-size:12px;"><i class="fa-solid fa-industry"></i></div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+        });
+        const factoryMarker = L.marker([FACTORY_LAT, FACTORY_LONG], { icon: factoryIcon }).addTo(map);
+        factoryMarker.bindPopup(`
+            <div class="custom-popup">
+                <div class="popup-title"><i class="fa-solid fa-industry"></i> Sugar Mill Central Location</div>
+                <div class="popup-row"><span class="popup-label">Latitude:</span> <span class="popup-value">${FACTORY_LAT}</span></div>
+                <div class="popup-row"><span class="popup-label">Longitude:</span> <span class="popup-value">${FACTORY_LONG}</span></div>
+            </div>
+        `);
+
+        // Draw Distance Rings
+        function drawDistanceRings() {
+            ringsGroup.clearLayers();
+            const distances = [5, 10, 15, 20, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115];
+            const colors = ['#10b981', '#38bdf8', '#6366f1', '#a855f7', '#f59e0b', '#ef4444'];
+
+            distances.forEach((dist, idx) => {
+                const circle = L.circle([FACTORY_LAT, FACTORY_LONG], {
+                    radius: dist * 1000,
+                    color: colors[idx % colors.length],
+                    weight: 1.5,
+                    dashArray: '5, 8',
+                    fill: false,
+                    opacity: 0.65
+                });
+                circle.bindTooltip(`${dist} km Radius`, { permanent: true, direction: 'right', className: 'ring-tooltip' });
+                ringsGroup.addLayer(circle);
+            });
+        }
+        drawDistanceRings();
+
+        // Standardize Excel row headers to expected JSON structure
+        function normalizeSpreadsheetData(rawRows) {
+            return rawRows.map(row => {
+                const society = String(row['Society'] || row['society'] || '').trim();
+                const region  = String(row['Region_Name'] || row['RegionName'] || row['Region'] || '').trim();
+                const zone    = String(row['Zone_Name'] || row['ZoneName'] || row['Zone'] || '').trim();
+                const circle  = String(row['Circle_Name'] || row['CircleName'] || row['Circle'] || '').trim();
+                const code    = String(row['Village'] || row['VillageCode'] || row['Code'] || '').trim();
+                const name    = String(row['Village name'] || row['VillageName'] || row['Name'] || '').trim();
+
+                const cLat  = parseFloat(row['Current Locaton Latitude'] || row['Current Location Latitude'] || row['CurrentLat'] || FACTORY_LAT) || FACTORY_LAT;
+                const cLong = parseFloat(row['Current Location Longitude'] || row['CurrentLong'] || FACTORY_LONG) || FACTORY_LONG;
+                const vLat  = parseFloat(row['Village Location Latitude'] || row['VillageLat'] || 0) || 0;
+                const vLong = parseFloat(row['Village Location Longitude'] || row['VillageLong'] || 0) || 0;
+
+                const cla  = parseFloat(row['CLA'] || 0) || 0;
+                const dist = parseFloat(row['Distance'] || 0) || 0;
+                const area = parseFloat(row['Area'] || 0) || 0;
+
+                return {
+                    Society: society,
+                    RegionName: region,
+                    ZoneName: zone,
+                    CircleName: circle,
+                    VillageCode: code,
+                    VillageName: name,
+                    CurrentLat: cLat,
+                    CurrentLong: cLong,
+                    VillageLat: vLat,
+                    VillageLong: vLong,
+                    CLA: cla,
+                    Distance: dist,
+                    Area: area
+                };
+            }).filter(v => v.VillageName || v.VillageCode);
+        }
+
+        // Re-populate Dropdown Filters
+        function populateFilterDropdowns() {
+            const regions = new Set();
+            const zones = new Set();
+            const circles = new Set();
+
+            rawVillagesData.forEach(v => {
+                if (v.RegionName) regions.add(v.RegionName);
+                if (v.ZoneName) zones.add(v.ZoneName);
+                if (v.CircleName) circles.add(v.CircleName);
+            });
+
+            populateSelect('region-filter', regions, 'All Regions');
+            populateSelect('zone-filter', zones, 'All Zones');
+            populateSelect('circle-filter', circles, 'All Circles');
+        }
+
+        function populateSelect(elementId, setObj, defaultLabel) {
+            const select = document.getElementById(elementId);
+            const selectedVal = select.value;
+            select.innerHTML = `<option value="">${defaultLabel}</option>`;
+            Array.from(setObj).sort().forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                select.appendChild(opt);
+            });
+            select.value = selectedVal;
+        }
+
+        // Process Excel Array Buffer dynamically
+        function loadExcelFromBuffer(arrayBuffer, sourceName) {
+            try {
+                if (typeof XLSX === 'undefined') {
+                    console.warn('SheetJS XLSX library not loaded');
+                    return false;
+                }
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rawJson = XLSX.utils.sheet_to_json(worksheet);
+
+                if (rawJson && rawJson.length > 0) {
+                    rawVillagesData = normalizeSpreadsheetData(rawJson);
+                    document.getElementById('data-source-text').textContent = `${sourceName} (${rawVillagesData.length} Villages)`;
+                    populateFilterDropdowns();
+                    applyFilters();
+                    return true;
+                }
+            } catch (err) {
+                console.error('Error parsing Excel spreadsheet dynamically:', err);
+            }
+            return false;
+        }
+
+        // Load Pre-Parsed JS Fallback
+        function loadFallbackData() {
+            if (window.VILLAGES && window.VILLAGES.length > 0) {
+                rawVillagesData = normalizeSpreadsheetData(window.VILLAGES);
+                document.getElementById('data-source-text').textContent = `village_data.js (${rawVillagesData.length} Villages)`;
+                populateFilterDropdowns();
+                applyFilters();
+            }
+        }
+
+        // Initialize Dynamic Data Fetching
+        fetch('Village_list_for_map.xlsx')
+            .then(response => {
+                if (!response.ok) throw new Error('File not accessible via fetch');
+                return response.arrayBuffer();
+            })
+            .then(buffer => {
+                const loaded = loadExcelFromBuffer(buffer, 'Village_list_for_map.xlsx');
+                if (!loaded) loadFallbackData();
+            })
+            .catch(err => {
+                console.log('Direct Excel fetch bypassed (CORS / local file mode). Using village_data.js dataset:', err.message);
+                loadFallbackData();
+            });
+
+        // User Custom File Upload Handler
+        document.getElementById('upload-excel-btn').addEventListener('click', () => {
+            document.getElementById('excel-file-input').click();
+        });
+
+        document.getElementById('excel-file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const buffer = evt.target.result;
+                const success = loadExcelFromBuffer(buffer, file.name);
+                if (!success) {
+                    alert('Could not parse the selected Excel file. Please ensure it contains valid village columns.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // Apply Search and Category Filters
+        function applyFilters() {
+            const searchVal = document.getElementById('search-input').value.toLowerCase().trim();
+            const regionVal = document.getElementById('region-filter').value;
+            const zoneVal   = document.getElementById('zone-filter').value;
+            const circleVal = document.getElementById('circle-filter').value;
+            const distVal   = document.getElementById('distance-filter').value;
+
+            filteredData = rawVillagesData.filter(v => {
+                if (searchVal) {
+                    const matchName = v.VillageName.toLowerCase().includes(searchVal);
+                    const matchCode = String(v.VillageCode).toLowerCase().includes(searchVal);
+                    if (!matchName && !matchCode) return false;
+                }
+
+                if (regionVal && v.RegionName !== regionVal) return false;
+                if (zoneVal && v.ZoneName !== zoneVal) return false;
+                if (circleVal && v.CircleName !== circleVal) return false;
+
+                if (distVal) {
+                    const d = v.Distance;
+                    if (distVal === '0-5' && !(d >= 0 && d <= 5)) return false;
+                    if (distVal === '5-10' && !(d > 5 && d <= 10)) return false;
+                    if (distVal === '10-15' && !(d > 10 && d <= 15)) return false;
+                    if (distVal === '15-20' && !(d > 15 && d <= 20)) return false;
+                    if (distVal === '20-25' && !(d > 20 && d <= 25)) return false;
+                    if (distVal === '25-35' && !(d > 25 && d <= 35)) return false;
+                    if (distVal === '35-45' && !(d > 35 && d <= 45)) return false;
+                    if (distVal === '45-55' && !(d > 45 && d <= 55)) return false;
+                    if (distVal === '55-65' && !(d > 55 && d <= 65)) return false;
+                    if (distVal === '65-75' && !(d > 65 && d <= 75)) return false;
+                    if (distVal === '75-85' && !(d > 75 && d <= 85)) return false;
+                    if (distVal === '85-95' && !(d > 85 && d <= 95)) return false;
+                    if (distVal === '95-105' && !(d > 95 && d <= 105)) return false;
+                    if (distVal === '105-115' && !(d > 105 && d <= 115)) return false;
+                    if (distVal === '115+' && !(d > 115)) return false;
+                }
+
+                return true;
+            });
+
+            renderMapAndTable();
+        }
+
+        // Table Sorting
+        function sortTable(col) {
+            if (currentSortCol === col) {
+                currentSortAsc = !currentSortAsc;
+            } else {
+                currentSortCol = col;
+                currentSortAsc = true;
+            }
+
+            filteredData.sort((a, b) => {
+                let valA = a[col] || 0;
+                let valB = b[col] || 0;
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return currentSortAsc ? -1 : 1;
+                if (valA > valB) return currentSortAsc ? 1 : -1;
+                return 0;
+            });
+
+            renderMapAndTable();
+        }
+
+        // Render Map Markers, Table, and KPI Bar
+        function renderMapAndTable() {
+            markersGroup.clearLayers();
+            linesGroup.clearLayers();
+
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            let totalArea = 0;
+            let totalCLA = 0;
+            let totalDist = 0;
+            let validDistCount = 0;
+
+            const showLines = document.getElementById('toggle-lines').checked;
+
+            filteredData.forEach(v => {
+                totalArea += (v.Area || 0);
+                totalCLA += (v.CLA || 0);
+                if (v.Distance > 0) {
+                    totalDist += v.Distance;
+                    validDistCount++;
+                }
+
+                // Add Marker if coordinates are valid
+                if (v.VillageLat && v.VillageLong && v.VillageLat > 0) {
+                    let color = '#38bdf8';
+                    if (v.Distance <= 5) color = '#10b981';
+                    else if (v.Distance <= 15) color = '#38bdf8';
+                    else if (v.Distance <= 25) color = '#f59e0b';
+                    else color = '#ef4444';
+
+                    const icon = L.divIcon({
+                        className: 'v-marker',
+                        html: `<div style="background: ${color}; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 0 6px ${color};"></div>`,
+                        iconSize: [10, 10],
+                        iconAnchor: [5, 5]
+                    });
+
+                    const marker = L.marker([v.VillageLat, v.VillageLong], { icon: icon });
+                    marker.bindPopup(`
+                        <div class="custom-popup">
+                            <div class="popup-title"><i class="fa-solid fa-location-dot"></i> ${v.VillageName} <span class="badge">#${v.VillageCode}</span></div>
+                            <div class="popup-row"><span class="popup-label">Region:</span> <span class="popup-value">${v.RegionName || '-'}</span></div>
+                            <div class="popup-row"><span class="popup-label">Zone:</span> <span class="popup-value">${v.ZoneName || '-'}</span></div>
+                            <div class="popup-row"><span class="popup-label">Circle:</span> <span class="popup-value">${v.CircleName || '-'}</span></div>
+                            <div class="popup-row"><span class="popup-label">Distance:</span> <span class="popup-value" style="color:${color}">${v.Distance} km</span></div>
+                            <div class="popup-row"><span class="popup-label">CLA:</span> <span class="popup-value">${v.CLA}</span></div>
+                            <div class="popup-row"><span class="popup-label">Cane Area:</span> <span class="popup-value">${v.Area} Ha</span></div>
+                            <div class="popup-row"><span class="popup-label">Coords:</span> <span class="popup-value">${v.VillageLat.toFixed(4)}, ${v.VillageLong.toFixed(4)}</span></div>
+                        </div>
+                    `);
+                    markersGroup.addLayer(marker);
+
+                    if (showLines) {
+                        const line = L.polyline([[FACTORY_LAT, FACTORY_LONG], [v.VillageLat, v.VillageLong]], {
+                            color: color,
+                            weight: 1,
+                            opacity: 0.35,
+                            dashArray: '3, 6'
+                        });
+                        linesGroup.addLayer(line);
+                    }
+                }
+
+                // Table Row
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${v.VillageCode}</strong></td>
+                    <td>${v.VillageName}</td>
+                    <td>${v.RegionName || '-'}</td>
+                    <td>${v.ZoneName || '-'}</td>
+                    <td>${v.CircleName || '-'}</td>
+                    <td><span class="badge" style="background:rgba(56,189,248,0.1); color:var(--primary);">${v.Distance} km</span></td>
+                    <td>${v.CLA ? v.CLA.toFixed(2) : '0.000'}</td>
+                    <td>${v.Area ? v.Area.toFixed(2) : '0.000'}</td>
+                    <td>${v.VillageLat ? v.VillageLat.toFixed(5) : '-'}</td>
+                    <td>${v.VillageLong ? v.VillageLong.toFixed(5) : '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Update KPI cards
+            document.getElementById('kpi-villages').textContent = filteredData.length.toLocaleString();
+            document.getElementById('kpi-area').textContent = totalArea.toFixed(2);
+            document.getElementById('kpi-cla').textContent = totalCLA.toFixed(2);
+            const avgDist = validDistCount > 0 ? (totalDist / validDistCount).toFixed(1) : '0.0';
+            document.getElementById('kpi-avg-dist').textContent = `${avgDist} km`;
+
+            document.getElementById('table-count').textContent = filteredData.length.toLocaleString();
+        }
+
+        // Event Listeners
+        document.getElementById('search-input').addEventListener('input', applyFilters);
+        document.getElementById('region-filter').addEventListener('change', applyFilters);
+        document.getElementById('zone-filter').addEventListener('change', applyFilters);
+        document.getElementById('circle-filter').addEventListener('change', applyFilters);
+        document.getElementById('distance-filter').addEventListener('change', applyFilters);
+
+        document.getElementById('tile-filter').addEventListener('change', (e) => {
+            map.removeLayer(currentTile);
+            currentTile = tileLayers[e.target.value] || tileLayers.osm;
+            currentTile.addTo(map);
+        });
+
+        document.getElementById('toggle-rings').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(ringsGroup);
+            else map.removeLayer(ringsGroup);
+        });
+
+        document.getElementById('toggle-lines').addEventListener('change', () => {
+            renderMapAndTable();
+        });
+
+        document.getElementById('reset-filters-btn').addEventListener('click', () => {
+            document.getElementById('search-input').value = '';
+            document.getElementById('region-filter').value = '';
+            document.getElementById('zone-filter').value = '';
+            document.getElementById('circle-filter').value = '';
+            document.getElementById('distance-filter').value = '';
+            applyFilters();
+        });
+
+        // Table Drawer Toggle
+        const drawer = document.getElementById('table-drawer');
+        document.getElementById('toggle-table-btn').addEventListener('click', () => {
+            drawer.classList.toggle('open');
+        });
+        document.getElementById('close-table-btn').addEventListener('click', () => {
+            drawer.classList.remove('open');
+        });
+
+        // Export CSV Functionality
+        document.getElementById('export-csv-btn').addEventListener('click', () => {
+            const headers = ['Society', 'RegionName', 'ZoneName', 'CircleName', 'VillageCode', 'VillageName', 'CurrentLat', 'CurrentLong', 'VillageLat', 'VillageLong', 'CLA', 'Distance_km', 'Area_Ha'];
+            const rows = filteredData.map(v => [
+                '"' + (v.Society || '') + '"',
+                '"' + (v.RegionName || '') + '"',
+                '"' + (v.ZoneName || '') + '"',
+                '"' + (v.CircleName || '') + '"',
+                v.VillageCode,
+                '"' + (v.VillageName || '') + '"',
+                v.CurrentLat,
+                v.CurrentLong,
+                v.VillageLat,
+                v.VillageLong,
+                v.CLA,
+                v.Distance,
+                v.Area
+            ]);
+
+            const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', 'Village_Map_Export.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
